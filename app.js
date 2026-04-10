@@ -69,6 +69,7 @@ export function App() {
   const [error, setError] = useState("");
   const [scorePops, setScorePops] = useState([]);
   const [importInfo, setImportInfo] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [roomId, setRoomId] = usePersistentState("teacher-race-room-id-v1", DEFAULT_ROOM_ID);
   const [cloudConfigText, setCloudConfigText] = usePersistentState(
     CLOUD_CONFIG_KEY,
@@ -89,6 +90,17 @@ export function App() {
     sorted.forEach((p) => groups[getZone(p.score, thresholds)].push(p));
     return groups;
   }, [sorted, thresholds]);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        setShowAdvanced((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!cloudEnabled) {
@@ -241,7 +253,11 @@ export function App() {
     React.createElement(
       "div",
       { className: "title-wrap" },
-      React.createElement("h1", { className: "title" }, "Teacher Race System"),
+      React.createElement(
+        "div",
+        { className: "title-row" },
+        React.createElement("h1", { className: "title" }, "Teacher Race System")
+      ),
       React.createElement("p", { className: "subtitle" }, "Зоны производительности с настраиваемыми лимитами.")
     ),
     React.createElement(
@@ -297,70 +313,80 @@ export function App() {
         "p",
         { className: "zone-help" },
         `Красная: < ${thresholds.yellowMin} | Желтая: ${thresholds.yellowMin}–${thresholds.greenMin - 1} | Зеленая: >= ${thresholds.greenMin}`
-      ),
-      React.createElement(
-        "div",
-        { className: "data-actions" },
-        React.createElement(
-          "button",
-          { className: "btn btn-primary", onClick: exportData },
-          "Export JSON"
-        ),
-        React.createElement("input", {
-          className: "input file-input",
-          type: "file",
-          accept: "application/json,.json",
-          onChange: (e) => {
-            const file = e.target.files?.[0];
-            if (file) importDataFromFile(file);
-            e.target.value = "";
-          },
-        })
       )
     ),
-    React.createElement(
-      "section",
-      { className: "zone-settings glass" },
-      React.createElement("h3", { className: "panel-title" }, "Общая синхронизация через ссылку"),
+    showAdvanced &&
       React.createElement(
-        "label",
-        { className: "zone-input" },
-        React.createElement("span", null, "Room ID (одинаковый у всех)"),
-        React.createElement("input", {
-          className: "input",
-          value: roomId,
-          onChange: (e) => setRoomId(normalizeName(e.target.value || DEFAULT_ROOM_ID)),
-          placeholder: "main",
-        })
-      ),
-      React.createElement(
-        "label",
-        { className: "zone-input" },
-        React.createElement("span", null, "firebaseConfig (JSON из Firebase)"),
-        React.createElement("textarea", {
-          className: "input config-area",
-          value: cloudConfigText,
-          onChange: (e) => setCloudConfigText(e.target.value),
-          placeholder:
-            '{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}',
-        })
-      ),
-      React.createElement(
-        "div",
-        { className: "data-actions" },
+        React.Fragment,
+        null,
         React.createElement(
-          "button",
-          { className: "btn btn-primary", onClick: handleEnableCloudSync },
-          "Включить Cloud Sync"
+          "section",
+          { className: "zone-settings glass" },
+          React.createElement("h3", { className: "panel-title" }, "Импорт / Экспорт данных"),
+          React.createElement(
+            "div",
+            { className: "data-actions" },
+            React.createElement(
+              "button",
+              { className: "btn btn-primary", onClick: exportData },
+              "Export JSON"
+            ),
+            React.createElement("input", {
+              className: "input file-input",
+              type: "file",
+              accept: "application/json,.json",
+              onChange: (e) => {
+                const file = e.target.files?.[0];
+                if (file) importDataFromFile(file);
+                e.target.value = "";
+              },
+            })
+          )
         ),
         React.createElement(
-          "button",
-          { className: "btn btn-danger", onClick: () => setCloudEnabled(false) },
-          "Выключить Cloud Sync"
+          "section",
+          { className: "zone-settings glass" },
+          React.createElement("h3", { className: "panel-title" }, "Общая синхронизация через ссылку"),
+          React.createElement(
+            "label",
+            { className: "zone-input" },
+            React.createElement("span", null, "Room ID (одинаковый у всех)"),
+            React.createElement("input", {
+              className: "input",
+              value: roomId,
+              onChange: (e) => setRoomId(normalizeName(e.target.value || DEFAULT_ROOM_ID)),
+              placeholder: "main",
+            })
+          ),
+          React.createElement(
+            "label",
+            { className: "zone-input" },
+            React.createElement("span", null, "firebaseConfig (JSON из Firebase)"),
+            React.createElement("textarea", {
+              className: "input config-area",
+              value: cloudConfigText,
+              onChange: (e) => setCloudConfigText(e.target.value),
+              placeholder:
+                '{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}',
+            })
+          ),
+          React.createElement(
+            "div",
+            { className: "data-actions" },
+            React.createElement(
+              "button",
+              { className: "btn btn-primary", onClick: handleEnableCloudSync },
+              "Включить Cloud Sync"
+            ),
+            React.createElement(
+              "button",
+              { className: "btn btn-danger", onClick: () => setCloudEnabled(false) },
+              "Выключить Cloud Sync"
+            )
+          ),
+          React.createElement("p", { className: "zone-help" }, cloudStatus)
         )
       ),
-      React.createElement("p", { className: "zone-help" }, cloudStatus)
-    ),
     importInfo && React.createElement("div", { className: "import-info" }, importInfo),
     React.createElement(
       "section",
