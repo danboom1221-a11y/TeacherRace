@@ -1,32 +1,13 @@
-import {
-  initializeApp,
-  getApps,
-  getApp,
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import {
-  getFirestore,
-  doc,
-  onSnapshot,
-  setDoc,
-  serverTimestamp,
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const { React, motion, AnimatePresence } = window.__TRS__;
 const { useEffect, useMemo, useRef, useState } = React;
 
 const STORAGE_KEY = "teacher-race-system-zones-v1";
 const ZONE_STORAGE_KEY = "teacher-race-zones-v1";
-const CLOUD_CONFIG_KEY = "teacher-race-cloud-config-v1";
-const DEFAULT_ROOM_ID = "public";
-const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyChxWXds0BtVtgVW5udWIi9Nmr0uyFTUWE",
-  authDomain: "teacher-race-system.firebaseapp.com",
-  projectId: "teacher-race-system",
-  storageBucket: "teacher-race-system.firebasestorage.app",
-  messagingSenderId: "655026908184",
-  appId: "1:655026908184:web:72cc703ad9a2586eb9676d",
-  measurementId: "G-NE26FCWD5R",
-};
+const SUPABASE_URL_KEY = "teacher-race-supabase-url-v1";
+const SUPABASE_ANON_KEY = "teacher-race-supabase-anon-v1";
+const PUBLIC_ROOM = "public";
 
 function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -74,16 +55,12 @@ export function App() {
   const [scorePops, setScorePops] = useState([]);
   const [importInfo, setImportInfo] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [roomId, setRoomId] = usePersistentState("teacher-race-room-id-v1", DEFAULT_ROOM_ID);
-  const [cloudConfigText, setCloudConfigText] = usePersistentState(
-    CLOUD_CONFIG_KEY,
-    JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2)
-  );
-  const [cloudEnabled, setCloudEnabled] = usePersistentState("teacher-race-cloud-enabled-v1", false);
+  const [supabaseUrl, setSupabaseUrl] = usePersistentState(SUPABASE_URL_KEY, "");
+  const [supabaseAnonKey, setSupabaseAnonKey] = usePersistentState(SUPABASE_ANON_KEY, "");
   const [cloudStatus, setCloudStatus] = useState("Локальный режим");
   const [cloudReady, setCloudReady] = useState(false);
-  const dbRef = useRef(null);
-  const suppressCloudWriteRef = useRef(false);
+  const clientRef = useRef(null);
+  const suppressWriteRef = useRef(false);
 
   const sorted = useMemo(
     () => [...participants].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)),
@@ -96,65 +73,98 @@ export function App() {
     return groups;
   }, [sorted, thresholds]);
 
-  // Always keep public cloud sync enabled so any visitor sees shared data.
   useEffect(() => {
-    setCloudEnabled(true);
-    setRoomId(DEFAULT_ROOM_ID);
-  }, []);
-
-  useEffect(() => {
-    if (!cloudEnabled) {
-      setCloudStatus("Локальный режим");
+    if (!supabaseUrl || !supabaseAnonKey) {
+      setCloudReady(false);
+      setCloudStatus("Локальный режим (вставь Supabase URL и anon key)");
       return undefined;
     }
-    try {
-      const parsedConfig = JSON.parse(cloudConfigText || "{}");
-      if (!parsedConfig.projectId || !parsedConfig.apiKey || !parsedConfig.appId) {
-        setCloudStatus("Ошибка: вставь корректный firebaseConfig");
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    clientRef.current = supabase;
+    let cancelled = false;
+
+    async function initCloud() {
+      const { data, error } = await supabase
+        .from("teacher_race_state")
+        .select("*")
+        .eq("room_id", PUBLIC_ROOM)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error && error.code !== "PGRST116") {
+        setCloudStatus(`Ошибка Supabase: ${error.message}`);
         setCloudReady(false);
-        return undefined;
+        return;
       }
-      const appName = `teacher-race-${parsedConfig.projectId}`;
-      const app = getApps().some((a) => a.name === appName)
-        ? getApp(appName)
-        : initializeApp(parsedConfig, appName);
-      const db = getFirestore(app);
-      dbRef.current = db;
-      setCloudReady(true);
-      setCloudStatus(`Cloud sync: подключено (room: ${roomId})`);
-      const ref = doc(db, "teacherRaceRooms", roomId);
-      const unsub = onSnapshot(ref, (snap) => {
-        const data = snap.data();
-        if (!data) return;
-        suppressCloudWriteRef.current = true;
+
+      if (!data) {
+        const { error: insertError } = await supabase.from("teacher_race_state").insert({
+          room_id: PUBLIC_ROOM,
+          participants,
+          thresholds,
+        });
+        if (insertError) {
+          setCloudStatus(`Ошибка создания комнаты: ${insertError.message}`);
+          setCloudReady(false);
+          return;
+        }
+      } else {
+        suppressWriteRef.current = true;
         if (Array.isArray(data.participants)) setParticipants(data.participants);
         if (data.thresholds) setThresholds(data.thresholds);
-        suppressCloudWriteRef.current = false;
-      });
-      return () => unsub();
-    } catch {
-      setCloudStatus("Ошибка подключения Firebase");
-      setCloudReady(false);
-      return undefined;
+        suppressWriteRef.current = false;
+      }
+
+      setCloudReady(true);
+      setCloudStatus("Supabase sync: подключено (public)");
     }
-  }, [cloudEnabled, cloudConfigText, roomId]);
+
+    initCloud();
+
+    const channel = supabase
+      .channel("teacher-race-public")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "teacher_race_state", filter: `room_id=eq.${PUBLIC_ROOM}` },
+        (payload) => {
+          const row = payload.new;
+          if (!row) return;
+          suppressWriteRef.current = true;
+          if (Array.isArray(row.participants)) setParticipants(row.participants);
+          if (row.thresholds) setThresholds(row.thresholds);
+          suppressWriteRef.current = false;
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [supabaseUrl, supabaseAnonKey]);
 
   useEffect(() => {
-    if (!cloudEnabled || !dbRef.current || suppressCloudWriteRef.current) return;
-    const ref = doc(dbRef.current, "teacherRaceRooms", roomId);
-    setDoc(
-      ref,
-      {
-        participants,
-        thresholds,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    ).catch(() => {
-      setCloudStatus("Ошибка записи в Firestore");
+    if (!cloudReady || !clientRef.current || suppressWriteRef.current) return;
+    const timer = setTimeout(async () => {
+      const { error } = await clientRef.current
+        .from("teacher_race_state")
+        .update({ participants, thresholds, updated_at: new Date().toISOString() })
+        .eq("room_id", PUBLIC_ROOM);
+      if (error) {
+        setCloudStatus(`Ошибка записи Supabase: ${error.message}`);
+        setCloudReady(false);
+      }
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [participants, thresholds, cloudReady]);
+
+  function saveSupabaseConfig() {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      setCloudStatus("Заполни Supabase URL и anon key");
       setCloudReady(false);
-    });
-  }, [participants, thresholds, cloudEnabled, roomId]);
+    }
+    setCloudStatus("Параметры сохранены. Жду подключения...");
+  }
 
   function addParticipant() {
     const name = normalizeName(nameInput);
@@ -195,36 +205,21 @@ export function App() {
     });
   }
 
-  function handleEnableCloudSync() {
-    try {
-      JSON.parse(cloudConfigText || "{}");
-      setCloudEnabled(true);
-    } catch {
-      setCloudStatus("JSON в firebaseConfig невалидный");
-    }
-  }
-
   function forceCloudSyncNow() {
-    if (!cloudEnabled || !dbRef.current) {
-      setCloudStatus("Сначала включи Cloud Sync");
+    if (!cloudReady || !clientRef.current) {
+      setCloudStatus("Сначала подключи Supabase");
       return;
     }
-    const ref = doc(dbRef.current, "teacherRaceRooms", roomId);
-    setDoc(
-      ref,
-      {
-        participants,
-        thresholds,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    )
+    clientRef.current
+      .from("teacher_race_state")
+      .update({ participants, thresholds, updated_at: new Date().toISOString() })
+      .eq("room_id", PUBLIC_ROOM)
       .then(() => {
-        setCloudStatus(`Cloud sync: синхронизировано (${roomId})`);
+        setCloudStatus("Supabase sync: синхронизировано");
         setCloudReady(true);
       })
       .catch(() => {
-        setCloudStatus("Ошибка синхронизации. Проверь Firestore Rules.");
+        setCloudStatus("Ошибка синхронизации. Проверь настройки Supabase.");
         setCloudReady(false);
       });
   }
@@ -396,34 +391,32 @@ export function App() {
         React.createElement(
           "section",
           { className: "zone-settings glass" },
-          React.createElement("h3", { className: "panel-title" }, "Общая синхронизация через ссылку"),
+          React.createElement("h3", { className: "panel-title" }, "Общая синхронизация (Supabase)"),
           React.createElement(
             "p",
             { className: "zone-help" },
-            "Авто-режим включен: все пользователи синхронизируются в общей комнате public."
+            "Любой пользователь по ссылке видит общие данные из комнаты public."
           ),
           React.createElement(
             "label",
             { className: "zone-input" },
-            React.createElement("span", null, "Room ID (одинаковый у всех)"),
+            React.createElement("span", null, "Supabase URL"),
             React.createElement("input", {
               className: "input",
-              value: roomId,
-              onChange: (e) => setRoomId(normalizeName(e.target.value || DEFAULT_ROOM_ID)),
-              placeholder: "main",
-              readOnly: true,
+              value: supabaseUrl,
+              onChange: (e) => setSupabaseUrl(e.target.value.trim()),
+              placeholder: "https://xxxx.supabase.co",
             })
           ),
           React.createElement(
             "label",
             { className: "zone-input" },
-            React.createElement("span", null, "firebaseConfig (JSON из Firebase)"),
-            React.createElement("textarea", {
+            React.createElement("span", null, "Supabase anon key"),
+            React.createElement("input", {
               className: "input config-area",
-              value: cloudConfigText,
-              onChange: (e) => setCloudConfigText(e.target.value),
-              placeholder:
-                '{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}',
+              value: supabaseAnonKey,
+              onChange: (e) => setSupabaseAnonKey(e.target.value.trim()),
+              placeholder: "eyJhbGciOiJIUzI1NiIs...",
             })
           ),
           React.createElement(
@@ -431,13 +424,13 @@ export function App() {
             { className: "data-actions" },
             React.createElement(
               "button",
-              { className: "btn btn-primary", onClick: handleEnableCloudSync, disabled: true },
-              "Cloud Sync включен"
+              { className: "btn btn-primary", onClick: saveSupabaseConfig },
+              "Сохранить ключи"
             ),
             React.createElement(
               "span",
               { className: "zone-help" },
-              "Ручное выключение скрыто в публичном режиме."
+              "Таблица: teacher_race_state, комната: public"
             )
           ),
           React.createElement("p", { className: "zone-help" }, cloudStatus)
