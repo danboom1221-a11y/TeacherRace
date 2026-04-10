@@ -74,6 +74,12 @@ body {
   gap: 10px;
 }
 
+.btn-admin {
+  font-size: 0.8rem;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
 .subtitle {
   margin: 8px 0 0;
   color: var(--muted);

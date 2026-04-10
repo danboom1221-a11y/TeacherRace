@@ -92,17 +92,6 @@ export function App() {
   }, [sorted, thresholds]);
 
   useEffect(() => {
-    const onKeyDown = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        setShowAdvanced((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  useEffect(() => {
     if (!cloudEnabled) {
       setCloudStatus("Локальный режим");
       return undefined;
@@ -256,7 +245,15 @@ export function App() {
       React.createElement(
         "div",
         { className: "title-row" },
-        React.createElement("h1", { className: "title" }, "Teacher Race System")
+        React.createElement("h1", { className: "title" }, "Teacher Race System"),
+        React.createElement(
+          "button",
+          {
+            className: "btn btn-soft btn-admin",
+            onClick: () => setShowAdvanced((v) => !v),
+          },
+          showAdvanced ? "Скрыть настройки админа" : "Настройки админа"
+        )
       ),
       React.createElement("p", { className: "subtitle" }, "Зоны производительности с настраиваемыми лимитами.")
     ),
