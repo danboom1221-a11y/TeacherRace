@@ -13,7 +13,7 @@ const { useEffect, useMemo, useRef, useState } = React;
 const STORAGE_KEY = "teacher-race-system-zones-v1";
 const ZONE_STORAGE_KEY = "teacher-race-zones-v1";
 const CLOUD_CONFIG_KEY = "teacher-race-cloud-config-v1";
-const DEFAULT_ROOM_ID = "main";
+const DEFAULT_ROOM_ID = "public";
 const DEFAULT_FIREBASE_CONFIG = {
   apiKey: "AIzaSyChxWXds0BtVtgVW5udWIi9Nmr0uyFTUWE",
   authDomain: "teacher-race-system.firebaseapp.com",
@@ -90,6 +90,12 @@ export function App() {
     sorted.forEach((p) => groups[getZone(p.score, thresholds)].push(p));
     return groups;
   }, [sorted, thresholds]);
+
+  // Always keep public cloud sync enabled so any visitor sees shared data.
+  useEffect(() => {
+    setCloudEnabled(true);
+    setRoomId(DEFAULT_ROOM_ID);
+  }, []);
 
   useEffect(() => {
     if (!cloudEnabled) {
@@ -345,6 +351,11 @@ export function App() {
           { className: "zone-settings glass" },
           React.createElement("h3", { className: "panel-title" }, "Общая синхронизация через ссылку"),
           React.createElement(
+            "p",
+            { className: "zone-help" },
+            "Авто-режим включен: все пользователи синхронизируются в общей комнате public."
+          ),
+          React.createElement(
             "label",
             { className: "zone-input" },
             React.createElement("span", null, "Room ID (одинаковый у всех)"),
@@ -353,6 +364,7 @@ export function App() {
               value: roomId,
               onChange: (e) => setRoomId(normalizeName(e.target.value || DEFAULT_ROOM_ID)),
               placeholder: "main",
+              readOnly: true,
             })
           ),
           React.createElement(
@@ -372,13 +384,13 @@ export function App() {
             { className: "data-actions" },
             React.createElement(
               "button",
-              { className: "btn btn-primary", onClick: handleEnableCloudSync },
-              "Включить Cloud Sync"
+              { className: "btn btn-primary", onClick: handleEnableCloudSync, disabled: true },
+              "Cloud Sync включен"
             ),
             React.createElement(
-              "button",
-              { className: "btn btn-danger", onClick: () => setCloudEnabled(false) },
-              "Выключить Cloud Sync"
+              "span",
+              { className: "zone-help" },
+              "Ручное выключение скрыто в публичном режиме."
             )
           ),
           React.createElement("p", { className: "zone-help" }, cloudStatus)
