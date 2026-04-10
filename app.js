@@ -1,4 +1,8 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import {
+  initializeApp,
+  getApps,
+  getApp,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   getFirestore,
   doc,
@@ -77,6 +81,7 @@ export function App() {
   );
   const [cloudEnabled, setCloudEnabled] = usePersistentState("teacher-race-cloud-enabled-v1", false);
   const [cloudStatus, setCloudStatus] = useState("Локальный режим");
+  const [cloudReady, setCloudReady] = useState(false);
   const dbRef = useRef(null);
   const suppressCloudWriteRef = useRef(false);
 
@@ -106,11 +111,16 @@ export function App() {
       const parsedConfig = JSON.parse(cloudConfigText || "{}");
       if (!parsedConfig.projectId || !parsedConfig.apiKey || !parsedConfig.appId) {
         setCloudStatus("Ошибка: вставь корректный firebaseConfig");
+        setCloudReady(false);
         return undefined;
       }
-      const app = initializeApp(parsedConfig, `teacher-race-${parsedConfig.projectId}`);
+      const appName = `teacher-race-${parsedConfig.projectId}`;
+      const app = getApps().some((a) => a.name === appName)
+        ? getApp(appName)
+        : initializeApp(parsedConfig, appName);
       const db = getFirestore(app);
       dbRef.current = db;
+      setCloudReady(true);
       setCloudStatus(`Cloud sync: подключено (room: ${roomId})`);
       const ref = doc(db, "teacherRaceRooms", roomId);
       const unsub = onSnapshot(ref, (snap) => {
@@ -124,6 +134,7 @@ export function App() {
       return () => unsub();
     } catch {
       setCloudStatus("Ошибка подключения Firebase");
+      setCloudReady(false);
       return undefined;
     }
   }, [cloudEnabled, cloudConfigText, roomId]);
@@ -141,6 +152,7 @@ export function App() {
       { merge: true }
     ).catch(() => {
       setCloudStatus("Ошибка записи в Firestore");
+      setCloudReady(false);
     });
   }, [participants, thresholds, cloudEnabled, roomId]);
 
@@ -190,6 +202,31 @@ export function App() {
     } catch {
       setCloudStatus("JSON в firebaseConfig невалидный");
     }
+  }
+
+  function forceCloudSyncNow() {
+    if (!cloudEnabled || !dbRef.current) {
+      setCloudStatus("Сначала включи Cloud Sync");
+      return;
+    }
+    const ref = doc(dbRef.current, "teacherRaceRooms", roomId);
+    setDoc(
+      ref,
+      {
+        participants,
+        thresholds,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+      .then(() => {
+        setCloudStatus(`Cloud sync: синхронизировано (${roomId})`);
+        setCloudReady(true);
+      })
+      .catch(() => {
+        setCloudStatus("Ошибка синхронизации. Проверь Firestore Rules.");
+        setCloudReady(false);
+      });
   }
 
   function exportData() {
@@ -278,7 +315,17 @@ export function App() {
         }),
         React.createElement("button", { className: "btn btn-primary", onClick: addParticipant }, "Добавить")
       ),
-      error && React.createElement("div", { className: "error-text" }, error)
+      error && React.createElement("div", { className: "error-text" }, error),
+      React.createElement(
+        "div",
+        { className: `sync-pill ${cloudReady ? "ok" : "bad"}` },
+        cloudReady ? "Синхронизация: активна" : "Синхронизация: проблема",
+        React.createElement(
+          "button",
+          { className: "btn btn-soft btn-sync-now", onClick: forceCloudSyncNow },
+          "Синхронизировать сейчас"
+        )
+      )
     ),
     React.createElement(
       "section",
