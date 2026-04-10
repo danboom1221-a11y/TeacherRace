@@ -108,6 +108,32 @@ body {
   font-size: 0.86rem;
 }
 
+.data-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.file-input {
+  max-width: 320px;
+  padding: 9px 10px;
+}
+
+.config-area {
+  min-height: 120px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+
+.import-info {
+  margin: 0 0 10px;
+  color: #c8f2d5;
+  font-size: 0.9rem;
+}
+
 .input {
   flex: 1;
   border: 1px solid rgba(166, 184, 233, 0.27);
