@@ -9,6 +9,10 @@ const SUPABASE_URL_KEY = "teacher-race-supabase-url-v1";
 const SUPABASE_ANON_KEY = "teacher-race-supabase-anon-v1";
 const PUBLIC_ROOM = "public";
 
+/** Зашей сюда anon key один раз и запушь — тогда гостям по ссылке ничего вводить не нужно. */
+const DEFAULT_SUPABASE_URL = "https://rhkecefrhkcwzteodcdt.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "";
+
 function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -57,6 +61,8 @@ export function App() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [supabaseUrl, setSupabaseUrl] = usePersistentState(SUPABASE_URL_KEY, "");
   const [supabaseAnonKey, setSupabaseAnonKey] = usePersistentState(SUPABASE_ANON_KEY, "");
+  const resolvedUrl = (supabaseUrl || "").trim() || DEFAULT_SUPABASE_URL;
+  const resolvedKey = (supabaseAnonKey || "").trim() || DEFAULT_SUPABASE_ANON_KEY;
   const [cloudStatus, setCloudStatus] = useState("Локальный режим");
   const [cloudReady, setCloudReady] = useState(false);
   const clientRef = useRef(null);
@@ -74,12 +80,14 @@ export function App() {
   }, [sorted, thresholds]);
 
   useEffect(() => {
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (!resolvedUrl || !resolvedKey) {
       setCloudReady(false);
-      setCloudStatus("Локальный режим (вставь Supabase URL и anon key)");
+      setCloudStatus(
+        "Локальный режим: вставь anon key в app.js (DEFAULT_SUPABASE_ANON_KEY) или в Настройки админа"
+      );
       return undefined;
     }
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const supabase = createClient(resolvedUrl, resolvedKey);
     clientRef.current = supabase;
     let cancelled = false;
 
@@ -141,7 +149,7 @@ export function App() {
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [supabaseUrl, supabaseAnonKey]);
+  }, [resolvedUrl, resolvedKey]);
 
   useEffect(() => {
     if (!cloudReady || !clientRef.current || suppressWriteRef.current) return;
@@ -159,9 +167,10 @@ export function App() {
   }, [participants, thresholds, cloudReady]);
 
   function saveSupabaseConfig() {
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (!resolvedUrl || !resolvedKey) {
       setCloudStatus("Заполни Supabase URL и anon key");
       setCloudReady(false);
+      return;
     }
     setCloudStatus("Параметры сохранены. Жду подключения...");
   }
@@ -396,6 +405,13 @@ export function App() {
             "p",
             { className: "zone-help" },
             "Любой пользователь по ссылке видит общие данные из комнаты public."
+          ),
+          React.createElement(
+            "p",
+            { className: "zone-help" },
+            DEFAULT_SUPABASE_ANON_KEY
+              ? "Ключ зашит в коде — на других устройствах ничего вводить не нужно. Поля ниже только если хочешь переопределить в этом браузере."
+              : "Чтобы гостям не вводить ключ: один раз вставь anon в файл app.js (константа DEFAULT_SUPABASE_ANON_KEY) и сделай push на GitHub."
           ),
           React.createElement(
             "label",
