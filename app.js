@@ -9,9 +9,10 @@ const SUPABASE_URL_KEY = "teacher-race-supabase-url-v1";
 const SUPABASE_ANON_KEY = "teacher-race-supabase-anon-v1";
 const PUBLIC_ROOM = "public";
 
-/** Зашей сюда anon key один раз и запушь — тогда гостям по ссылке ничего вводить не нужно. */
+/** Зашито для гостей по ссылке (anon key — публичный; защита через RLS в Supabase). */
 const DEFAULT_SUPABASE_URL = "https://rhkecefrhkcwzteodcdt.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY = "";
+const DEFAULT_SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoa2VjZWZyaGtjd3p0ZW9kY2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4OTUxOTksImV4cCI6MjA5MTQ3MTE5OX0.M2dR4Mn4hobmkXyOajYFuI5FrJSFOPFRZOZzX-dyzKg";
 
 function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
